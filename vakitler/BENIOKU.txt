@@ -1,0 +1,1 @@
+Bu klasör, Diyanet namaz vakitleri eşitlemesi çalışınca kendiliğinden dolar (bkz. tools/diyanet-sync.mjs).
