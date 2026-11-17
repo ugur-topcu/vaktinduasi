@@ -31,6 +31,11 @@ const MIN_HORIZON_DAYS = Number(env.MIN_HORIZON_DAYS || 20);
 const COUNTRY = env.ULKE || 'TÜRKİYE';
 const SOURCE = 'Diyanet İşleri Başkanlığı Namaz Vakti servisi (awqatsalah.diyanet.gov.tr)';
 const FIELDS = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha'];
+// Yer listesi biçimi değişince (ör. ad düzeltmeleri) yerler.json bir sonraki çalışmada yeniden üretilir.
+const PLACES_VERSION = 2;
+// Diyanet listesinde Türkçe karaktersiz veya kısaltılmış gelen ilçe adlarının resmî yazımları (Diyanet kimliğine göre).
+const AD_DUZELTME = {"9151": "Karaisalı", "9187": "Doğubayazıt", "9211": "Çubuk", "9268": "Yenipazar", "9305": "Kiğı", "9329": "Çeltikçi", "9332": "Kemer", "9336": "Büyükorhan", "9344": "Mustafakemalpaşa", "9360": "Çerkeş", "9525": "Aksu", "9530": "Şarkikaraağaç", "9531": "Sütçüler", "9534": "Yenişarbademli", "9535": "Arnavutköy", "9556": "Çeşme", "9566": "Seferihisar", "9582": "Ovacık", "9583": "Yenice", "9601": "Bozkurt", "9611": "Pınarbaşı", "9631": "Balışeyh", "9632": "Çelebi", "9633": "Delice", "9634": "Karakeçili", "9637": "Demirköy", "9639": "Lüleburgaz", "9640": "Pehlivanköy", "9641": "Pınarhisar", "9642": "Vize", "9644": "Çiçekdağı", "9701": "Kale", "9723": "Dargeçit", "9812": "Ayvacık", "9857": "Altınyayla", "9875": "Marmaraereğlisi", "9884": "Pazar", "9900": "Köprübaşı", "9910": "Nazımiye", "9916": "Eşme", "9924": "Edremit", "9929": "Saray", "9937": "Aydıncık", "9954": "Ereğli", "17888": "Şirvan"};
+const ilceAdi = (id, raw) => AD_DUZELTME[id] || titleCase(String(raw || '').replace(/\s*\([A-Za-zÇĞİÖŞÜçğıöşü]\)\s*$/u, ''));
 
 class StopError extends Error {}
 let token = null;
@@ -109,7 +114,7 @@ function parseTimes(row) {
 async function loadPlaces(today) {
   const file = path.join(OUT, 'yerler.json');
   const current = await readJson(file);
-  if (current?.iller?.length >= 81 && current.guncelleme && addDays(current.guncelleme.slice(0, 10), 30) >= today) return current;
+  if (current?.surum === PLACES_VERSION && current?.iller?.length >= 81 && current.guncelleme && addDays(current.guncelleme.slice(0, 10), 30) >= today) return current;
   log('Yer listesi yenileniyor…');
   try {
     const countries = await get('/api/Place/Countries');
@@ -120,10 +125,10 @@ async function loadPlaces(today) {
     const iller = [];
     for (const state of states) {
       const cities = await get('/api/Place/Cities/' + state.id);
-      iller.push({ id: state.id, ad: titleCase(state.name), ilceler: cities.map((c) => ({ id: c.id, ad: titleCase(c.name) })).sort((a, b) => a.ad.localeCompare(b.ad, 'tr')) });
+      iller.push({ id: state.id, ad: titleCase(state.name), ilceler: cities.map((c) => ({ id: c.id, ad: ilceAdi(c.id, c.name) })).sort((a, b) => a.ad.localeCompare(b.ad, 'tr')) });
     }
     iller.sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
-    const places = { kaynak: SOURCE, guncelleme: new Date().toISOString(), iller };
+    const places = { surum: PLACES_VERSION, kaynak: SOURCE, guncelleme: new Date().toISOString(), iller };
     await writeJson(file, places);
     log('Yer listesi yazıldı: ' + iller.length + ' il, ' + iller.reduce((n, il) => n + il.ilceler.length, 0) + ' ilçe.');
     return places;
@@ -164,7 +169,7 @@ async function main() {
       for (const row of Array.isArray(rows) ? rows : []) { const day = parseDay(row), times = parseTimes(row); if (day && times) { gunler[day] = times; added++; } }
       if (!added) { log('Uyarı: geçerli vakit gelmedi, atlandı: ' + item.il.ad + ' / ' + item.ilce.ad); continue; }
       const sorted = Object.fromEntries(Object.keys(gunler).sort().map((k) => [k, gunler[k]]));
-      await writeJson(item.file, { id: item.ilce.id, ad: item.ilce.ad, il: item.il.ad, kaynak: SOURCE, guncelleme: new Date().toISOString(), gunler: sorted });
+      await writeJson(item.file, { id: item.ilce.id, ad: AD_DUZELTME[item.ilce.id] || item.ilce.ad, il: item.il.ad, kaynak: SOURCE, guncelleme: new Date().toISOString(), gunler: sorted });
       status.tamamlanan++;
       status.bekleyen--;
     }
