@@ -1,0 +1,39 @@
+name: Diyanet vakitlerini güncelle
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vakitler
+  cancel-in-progress: false
+
+jobs:
+  esitle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Vakitleri indir
+        env:
+          DIYANET_EMAIL: ${{ secrets.DIYANET_EMAIL }}
+          DIYANET_PASSWORD: ${{ secrets.DIYANET_PASSWORD }}
+        run: node tools/diyanet-sync.mjs
+      - name: Değişiklikleri kaydet
+        run: |
+          git config user.name "vakit-esitleme"
+          git config user.email "actions@users.noreply.github.com"
+          git add vakitler
+          if git diff --cached --quiet; then
+            echo "Değişiklik yok."
+          else
+            git commit -m "Vakitler güncellendi"
+            git push
+          fi
